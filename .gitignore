@@ -1,0 +1,15 @@
+# Large data files
+bb.txt
+
+# Python artifacts
+__pycache__/
+.venv/
+*.py[cod]
+*$py.class
+
+# C++ artifacts
+colorlight_cpp/*.o
+colorlight_cpp/colorlight_app
+
+# OS files
+.DS_Store

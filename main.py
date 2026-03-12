@@ -3,6 +3,7 @@ import argparse
 import threading
 import time
 import os
+import json
 import subprocess
 from PIL import Image, ImageDraw, ImageFont
 from colorlight_module import ColorLight5a75Controller
@@ -12,24 +13,53 @@ current_img = None
 img_lock = threading.Lock()
 running = True
 
+def load_config():
+    """LED_Config 파일에서 기본 설정을 로드합니다."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, "LED_Config")
+    
+    # 기본값 설정
+    defaults = {
+        "interface": "en5",
+        "width": 320,
+        "height": 240,
+        "color_order": "BGR",
+        "font_size": 150,
+        "text_color": "white",
+        "bg_color": "black",
+        "brightness": 100,
+        "gamma": 1.0
+    }
+    
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                user_config = json.load(f)
+                defaults.update(user_config)
+        except Exception as e:
+            print(f"설정 파일('LED_Config') 로드 중 오류 발생 (기본값 사용): {e}")
+            
+    return defaults
+
 def get_args():
+    defaults = load_config()
     parser = argparse.ArgumentParser(description='Colorlight 5A-75B Modular Controller (v2)')
     
     # 필수 및 주요 옵션
     parser.add_argument('--text', '-t', type=str, default="Hello!", help='출력할 문자열 (기본: Hello!)')
-    parser.add_argument('--interface', '-i', type=str, default="en5", help='네트워크 인터페이스 (기본: en5)')
-    parser.add_argument('--width', '-W', type=int, default=320, help='패널 가로 해상도 (기본: 320)')
-    parser.add_argument('--height', '-H', type=int, default=240, help='패널 세로 해상도 (기본: 240)')
+    parser.add_argument('--interface', '-i', type=str, default=defaults["interface"], help=f'네트워크 인터페이스 (기본: {defaults["interface"]})')
+    parser.add_argument('--width', '-W', type=int, default=defaults["width"], help=f'패널 가로 해상도 (기본: {defaults["width"]})')
+    parser.add_argument('--height', '-H', type=int, default=defaults["height"], help=f'패널 세로 해상도 (기본: {defaults["height"]})')
     
     # 색상 및 폰트 설정
-    parser.add_argument('--color-order', '-co', type=str, default="BGR", help='색상 순서: RGB, BGR, GRB 등 (기본: BGR)')
-    parser.add_argument('--font-size', '-fs', type=int, default=150, help='글자 크기 (기본: 30)')
-    parser.add_argument('--text-color', type=str, default="white", help='글자 색상 (기본: white)')
-    parser.add_argument('--bg-color', type=str, default="black", help='배경 색상 (기본: black)')
+    parser.add_argument('--color-order', '-co', type=str, default=defaults["color_order"], help=f'색상 순서: RGB, BGR, GRB 등 (기본: {defaults["color_order"]})')
+    parser.add_argument('--font-size', '-fs', type=int, default=defaults["font_size"], help=f'글자 크기 (기본: {defaults["font_size"]})')
+    parser.add_argument('--text-color', type=str, default=defaults["text_color"], help=f'글자 색상 (기본: {defaults["text_color"]})')
+    parser.add_argument('--bg-color', type=str, default=defaults["bg_color"], help=f'배경 색상 (기본: {defaults["bg_color"]})')
     
     # 추가 제어 옵션 (C++ 원본 기능 반영)
-    parser.add_argument('--brightness', '-b', type=int, default=100, help='밝기 0-100 (기본: 100)')
-    parser.add_argument('--gamma', '-g', type=float, default=1.0, help='감마값 (기본: 1.0)')
+    parser.add_argument('--brightness', '-b', type=int, default=defaults["brightness"], help=f'밝기 0-100 (기본: {defaults["brightness"]})')
+    parser.add_argument('--gamma', '-g', type=float, default=defaults["gamma"], help=f'감마값 (기본: {defaults["gamma"]})')
     parser.add_argument('--firmware', '-fw', type=int, default=0, help='펌웨어 버전 (13 이상이면 패킷 중복 전송 활성)')
     parser.add_argument('--fps', '-f', type=float, default=10, help='초당 프레임 수 (FPS, 기본: 10, 예: 0.1은 10초당 1프레임)')
     parser.add_argument('--count', '-c', type=int, default=0, help='전송할 총 프레임 수 (0은 무제한, 기본: 0)')
@@ -122,17 +152,17 @@ def main():
     print(f"텍스트: '{args.text}' (크기: {args.font_size}, 색: {args.text_color})")
     print(f"--------------------------")
 
-    # 네트워크 인터페이스 자동 선택 로직
-    # 사용자가 직접 지정하지 않은 경우(기본값 en5일 때), 시스템에 en5가 없으면 enp0s6으로 폴백
+    # 네트워크 인터페이스 자동 선택 및 폴백 로직
+    # 선택된 인터페이스가 'en5'인데 시스템에 없을 경우 'enp0s6'으로 시도
     selected_interface = args.interface
-    if args.interface == "en5":
+    if selected_interface == "en5":
         try:
             available_ifaces = subprocess.check_output(["ifconfig", "-l"]).decode().split()
             if "en5" not in available_ifaces and "enp0s6" in available_ifaces:
-                print(f"시스템에 en5가 없어 enp0s6 인터페이스를 자동으로 선택합니다.")
+                print(f"알림: 시스템에 'en5'가 없어 'enp0s6' 인터페이스를 자동으로 선택합니다.")
                 selected_interface = "enp0s6"
         except Exception as e:
-            print(f"인터페이스 확인 중 오류 발생: {e}")
+            pass
 
     # 컨트롤러 인스턴스 생성
     controller = ColorLight5a75Controller(

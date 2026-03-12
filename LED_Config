@@ -1,0 +1,11 @@
+{
+    "interface": "en5",
+    "width": 320,
+    "height": 240,
+    "color_order": "BGR",
+    "font_size": 150,
+    "text_color": "white",
+    "bg_color": "black",
+    "brightness": 100,
+    "gamma": 1.0
+}

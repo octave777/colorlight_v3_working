@@ -20,7 +20,7 @@ def load_config():
     
     # 기본값 설정
     defaults = {
-        "interface": "en5",
+        "interface": "eth0",
         "width": 320,
         "height": 240,
         "color_order": "BGR",
@@ -153,16 +153,27 @@ def main():
     print(f"--------------------------")
 
     # 네트워크 인터페이스 자동 선택 및 폴백 로직
-    # 선택된 인터페이스가 'en5'인데 시스템에 없을 경우 'enp0s6'으로 시도
+    # 사용자가 지정하거나 설정파일에 있는 인터페이스를 먼저 시도하고, 
+    # 해당 장치가 없을 경우 eth0 -> en5 -> enp0s6 순서로 시도합니다.
     selected_interface = args.interface
-    if selected_interface == "en5":
-        try:
-            available_ifaces = subprocess.check_output(["ifconfig", "-l"]).decode().split()
-            if "en5" not in available_ifaces and "enp0s6" in available_ifaces:
-                print(f"알림: 시스템에 'en5'가 없어 'enp0s6' 인터페이스를 자동으로 선택합니다.")
-                selected_interface = "enp0s6"
-        except Exception as e:
-            pass
+    try:
+        available_ifaces = subprocess.check_output(["ifconfig", "-l"]).decode().split()
+        
+        # 현재 선택된 인터페이스가 존재하지 않는 경우에만 자동 탐색 시작
+        if selected_interface not in available_ifaces:
+            candidate_list = ["eth0", "en5", "enp0s6"]
+            found = False
+            for candidate in candidate_list:
+                if candidate in available_ifaces:
+                    print(f"알림: '{selected_interface}' 인터페이스를 찾을 수 없어 '{candidate}' 인터페이스를 자동으로 선택합니다.")
+                    selected_interface = candidate
+                    found = True
+                    break
+            
+            if not found:
+                print(f"경고: 기본 인터페이스 목록({candidate_list}) 중 사용 가능한 인터페이스를 찾지 못했습니다. '{args.interface}'를 그대로 시도합니다.")
+    except Exception as e:
+        print(f"인터페이스 확인 중 오류 발생: {e}")
 
     # 컨트롤러 인스턴스 생성
     controller = ColorLight5a75Controller(

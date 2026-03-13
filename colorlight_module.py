@@ -23,7 +23,7 @@ class ColorLight5a75Controller:
     CL_DEST_MAC = "11:22:33:44:55:66" # 목적지 MAC 주소 (하드코딩된 값)
     CL_SRC_MAC = "21:22:33:44:55:66"  # 출발지 MAC 주소 (Destination과 동일하게 설정)
     
-    def __init__(self, interface, width=320, height=240, color_order="BGR"):
+    def __init__(self, interface, width=320, height=160, color_order="BGR"):
         """
         초기화 함수
         :param interface: 네트워크 인터페이스 이름 (예: en5)

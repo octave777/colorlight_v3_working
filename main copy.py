@@ -63,7 +63,9 @@ def get_args():
     parser.add_argument('--brightness', '-b', type=int, default=defaults["brightness"], help=f'밝기 0-100 (기본: {defaults["brightness"]})')
     parser.add_argument('--gamma', '-g', type=float, default=defaults["gamma"], help=f'감마값 (기본: {defaults["gamma"]})')
     parser.add_argument('--firmware', '-fw', type=int, default=0, help='펌웨어 버전 (13 이상이면 패킷 중복 전송 활성)')
-    parser.add_argument('--fps', '-f', type=float, default=0, help='초당 프레임 수 (FPS, 0이면 한 번만 전송하고 종료, 기본: 0)')
+    parser.add_argument('--fps', '-f', type=float, default=10, help='초당 프레임 수 (FPS, 기본: 10, 예: 0.1은 10초당 1프레임)')
+    parser.add_argument('--count', '-c', type=int, default=0, help='전송할 총 프레임 수 (0은 무제한, 기본: 0)')
+    parser.add_argument('--once', action='store_true', help='단 한 번만 전송하고 종료')
 
     return parser.parse_args()
 
@@ -191,53 +193,59 @@ def main():
     # 시작 시 Colorlight 카드 설정 감지 및 출력
     controller.detect_and_print_config()
     
-    # 공유 정보 업데이트를 위한 변수
-    with img_lock:
-        current_img = create_text_image(args.text, args.width, args.height, args.initial_font_size, args.initial_text_color, args.bg_color)
-
-    def refresh_worker():
-        """백그라운드에서 하드웨어 주기에 맞춰 프레임을 연속 전송하는 스레드"""
-        nonlocal controller
-        while running:
-            with img_lock:
-                target_img = current_img
-            # output_frame 내부에서 16.6ms(60Hz) 타이밍을 제어하므로 별도의 sleep 생략
-            controller.output_frame(target_img)
-
     try:
-        if args.fps > 0:
-            # FPS가 설정된 경우 백그라운드 리프레시 시작
-            print(f"지속적 새로고침 활성화 (FPS: {args.fps})")
-            refresh_thread = threading.Thread(target=refresh_worker, daemon=True)
-            refresh_thread.start()
+        if args.once or args.count > 0:
+            # 지정된 횟수만큼 전송 모드
+            img = create_text_image(args.text, args.width, args.height, args.font_size, args.text_color, args.bg_color)
+            
+            num_frames = 1 if args.once else args.count
+            print(f"프레임 {num_frames}회 전송 시작...")
+            
+            interval = 1.0 / args.fps if args.fps > 0 else 0.01
+            for i in range(num_frames):
+                controller.output_frame(img)
+                if num_frames > 1 and i < num_frames - 1:
+                    time.sleep(interval)
+            
+            print(f"총 {num_frames}개 프레임 전송 완료!")
+            
         else:
-            # FPS가 0인 경우 처음에 딱 한 번 전송
-            controller.output_frame(current_img)
-            print(f"초기 이미지 전송 완료: '{args.text}'")
+            # 기본 모드: 인터랙티브 (스레딩 사용)
+            print("지속적 출력 모드 활성화됨 (백그라운드에서 화면을 유지합니다)")
+            print("새로운 텍스트를 입력하고 Enter를 누르면 화면이 즉시 바뀝니다.")
+            print("종료하려면 Ctrl+C를 누르세요.")
+            
+            # 초기 이미지 생성 및 즉시 전송
+            img = create_text_image(args.text, args.width, args.height, args.initial_font_size, args.initial_text_color, args.bg_color)
+            controller.output_frame(img)
+            print("초기 화면 전송 완료.")
+            
+            current_text = args.text
+            while True:
+                # 새로운 입력 대기 (Blocking)
+                print(f"\n현재 표시 중: '{current_text}'")
+                new_text = input("출력할 새로운 텍스트 입력: ")
+                
+                if new_text:
+                    # 새로 입력된 문자열로 완전히 교체
+                    current_text = new_text
+                    
+                    # 항상 새로 입력된 문자열의 마지막 3글자만 유지
+                    if len(current_text) > 3:
+                        display_text = current_text[-3:]
+                    else:
+                        display_text = current_text
+                    
+                    # '+' 기호가 포함되어 있는지 검사 (새 입력 전체 기준)
+                    if '+' in current_text:
+                        display_text = " "  # 공백 출력
 
-        print("\n새로운 텍스트를 입력하고 Enter를 누르면 화면이 즉시 바뀝니다.")
-        print("종료하려면 Ctrl+C를 누르세요.")
-
-        # 메인 스레드: 사용자 입력 처리 루프
-        while True:
-            new_text = input(f"\n[출력할 텍스트 입력]: ")
-            if new_text:
-                # 텍스트 가공 (마지막 3글자 유지, + 포함 시 공백)
-                display_text = new_text[-3:] if len(new_text) > 3 else new_text
-                if '+' in new_text:
-                    display_text = " "
-                
-                # 새로운 이미지 생성 (이후부터는 --font-size 등 일반 옵션 사용)
-                new_img = create_text_image(display_text, args.width, args.height, args.font_size, args.text_color, args.bg_color)
-                
-                with img_lock:
-                    current_img = new_img
-                
-                # FPS가 설정되지 않은 경우 수동으로 즉시 전송
-                if args.fps <= 0:
+                    # 새로운 이미지 생성 후 즉시 전송
+                    new_img = create_text_image(display_text, args.width, args.height, args.font_size, args.text_color, args.bg_color)
                     controller.output_frame(new_img)
-                
-                print(f">> 전송 갱신됨: '{display_text}'")
+                    print(f"텍스트가 '{display_text}'(으)로 갱신 및 전송되었습니다.")
+                else:
+                    print("입력이 없어 이전 상태를 유지합니다.")
 
     except KeyboardInterrupt:
         running = False

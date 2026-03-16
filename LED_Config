@@ -1,7 +1,7 @@
 {
-    "interface": "en5",
+    "interface": "enp0s6",
     "width": 320,
-    "height": 240,
+    "height": 160,
     "color_order": "BGR",
     "font_size": 150,
     "text_color": "white",

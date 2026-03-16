@@ -104,35 +104,32 @@ def create_text_image(text, width, height, font_size, text_color, bg_color):
     except:
         font = ImageFont.load_default()
 
-    # 3. 폰트 메트릭 정보 가져오기 (ascent: 베이스라인 위쪽, descent: 베이스라인 아래쪽)
-    try:
-        ascent, descent = font.getmetrics()
-    except AttributeError:
-        # 기본 폰트의 경우 metrics가 없을 수 있으므로 예외 처리
-        ascent, descent = font_size, font_size // 4
-    
-    # 폰트의 전체 고정 높이 (모든 글자가 공유하는 박스 높이)
-    line_height = ascent + descent
-
-    # 4. 텍스트 너비 계산 (정확한 잉크 영역)
-    # 더미 드로우 객체를 사용하여 텍스트의 가로 너비와 좌측 오프셋을 구합니다.
+    # 3. 텍스트 너비 및 높이 계산 (정확한 잉크 박스 영역)
+    # 더미 드로우 객체를 사용하여 텍스트의 가로 너비와 상하좌우 오프셋을 구합니다.
     temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
     bbox = temp_draw.textbbox((0, 0), text, font=font)
     text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]  # 텍스트의 실제 세로 잉크 높이 반영
+    
     offset_x = bbox[0] # 좌측 여백
+    offset_y = bbox[1] # 상단 여백 추가
 
-    # 5. 텍스트 전용 임시 캔버스 생성 (RGBA)
-    # 높이를 line_height로 고정함으로써 문자 종류에 상관없이 일관된 높이를 확보합니다.
-    text_canvas = Image.new('RGBA', (text_w, line_height), (0, 0, 0, 0))
+    # 4. 텍스트 전용 임시 캔버스 생성 (RGBA)
+    # 높이를 실제 인쇄 영역 텍스트 높이로 캔버스를 만듭니다.
+    # 안전장치: 빈 문구이거나 렌더 에러로 0 이하 크기가 나온 경우 최소 1픽셀 확보
+    if text_w <= 0: text_w = 1
+    if text_h <= 0: text_h = 1
+    
+    text_canvas = Image.new('RGBA', (text_w, text_h), (0, 0, 0, 0))
     text_draw = ImageDraw.Draw(text_canvas)
     
     # 텍스트 그리기
-    # y=0은 폰트의 ascent 시작점입니다. x는 bbox[0]만큼 당겨서 왼쪽 끝에 맞춥니다.
-    text_draw.text((-offset_x, 0), text, font=font, fill=text_color)
+    # X와 Y 오프셋을 모두 빼주어 캔버스의 (0,0) 모서리 끝단부터 꽉 차게 텍스트를 그림
+    text_draw.text((-offset_x, -offset_y), text, font=font, fill=text_color)
 
-    # 6. 최종 패널 중앙에 텍스트 캔버스 합성
+    # 5. 최종 패널 중앙에 텍스트 캔버스 합성
     paste_x = (width - text_w) // 2
-    paste_y = (height - line_height) // 2
+    paste_y = (height - text_h) // 2
     
     final_img.paste(text_canvas, (paste_x, paste_y), text_canvas)
     
